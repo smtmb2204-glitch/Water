@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Трекер воды</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#1e88e5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Вода">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+:root{--bg:#f3f8fc;--card:#fff;--text:#12303f;--muted:#5d7684;--accent:#1e88e5;--track:#d9e8f3;--line:#e3edf5;--ok:#2e9e6b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a22;--card:#16262f;--text:#e6f1f7;--muted:#8fa7b5;--accent:#4aa8f0;--track:#243a47;--line:#22353f;--ok:#4cc38a}}
+:root[data-theme="dark"]{--bg:#0e1a22;--card:#16262f;--text:#e6f1f7;--muted:#8fa7b5;--accent:#4aa8f0;--track:#243a47;--line:#22353f;--ok:#4cc38a}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;justify-content:center;padding:20px 16px}
+.card{width:100%;max-width:420px;background:var(--card);border-radius:24px;padding:24px;box-shadow:0 6px 24px rgba(20,60,90,.1)}
+h1{font-size:20px;margin:0 0 2px}
+.date{color:var(--muted);font-size:14px;margin-bottom:16px}
+.ring{position:relative;width:200px;height:200px;margin:0 auto 18px}
+.ring svg{transform:rotate(-90deg)}
+.ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.big{font-size:34px;font-weight:700}
+.sub{color:var(--muted);font-size:14px}
+.btns{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+button{font:inherit;border:0;cursor:pointer;border-radius:14px}
+.add{background:var(--accent);color:#fff;padding:14px 0;font-weight:600}
+.add:active{transform:scale(.97)}
+.row{display:flex;gap:8px;margin-bottom:18px}
+.row input{flex:1;min-width:0;font:inherit;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.row button{background:var(--track);color:var(--text);padding:12px 16px;font-weight:600}
+h2{font-size:15px;margin:0 0 8px;color:var(--muted);font-weight:600}
+ul{list-style:none;margin:0;padding:0;max-height:160px;overflow-y:auto}
+li{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
+.empty{color:var(--muted);font-size:14px}
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:14px;color:var(--muted)}
+.foot button{background:none;color:var(--muted);text-decoration:underline;padding:4px}
+.goal input{width:80px;font:inherit;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.done{color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Вода сегодня</h1>
+  <div class="date" id="date"></div>
+  <div class="ring">
+    <svg width="200" height="200" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="86" fill="none" stroke="var(--track)" stroke-width="16"/>
+      <circle id="bar" cx="100" cy="100" r="86" fill="none" stroke="var(--accent)" stroke-width="16" stroke-linecap="round" stroke-dasharray="540.35" stroke-dashoffset="540.35" style="transition:stroke-dashoffset .4s"/>
+    </svg>
+    <div class="c"><div class="big" id="total">0 мл</div><div class="sub" id="pct">0% от цели</div></div>
+  </div>
+  <div class="btns">
+    <button class="add" data-ml="150">+150</button>
+    <button class="add" data-ml="250">+250</button>
+    <button class="add" data-ml="500">+500</button>
+  </div>
+  <div class="row">
+    <input id="custom" type="number" min="1" max="3000" inputmode="numeric" placeholder="Свой объём, мл">
+    <button id="addc">Добавить</button>
+  </div>
+  <h2>Записи</h2>
+  <ul id="list"></ul>
+  <div class="foot">
+    <span class="goal">Цель: <input id="goal" type="number" min="500" max="6000" step="100"> мл</span>
+    <span><button id="undo">Отменить</button> <button id="reset">Сброс</button></span>
+  </div>
+</div>
+<script>
+(function(){
+  var KEY="water-tracker-v1", C=540.35;
+  var today=new Date().toISOString().slice(0,10);
+  var st={date:today,entries:[],goal:2000};
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(raw){var s=JSON.parse(raw);
+      if(s&&typeof s.goal==="number")st.goal=s.goal;
+      if(s&&s.date===today&&Array.isArray(s.entries))st.entries=s.entries;}
+  }catch(e){}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(st));}catch(e){}}
+  var $=function(id){return document.getElementById(id)};
+  function render(){
+    var t=st.entries.reduce(function(a,e){return a+e.ml},0);
+    var p=Math.min(100,Math.round(t/st.goal*100));
+    $("total").textContent=t+" мл";
+    $("pct").textContent=t>=st.goal?"Цель достигнута!":p+"% от цели";
+    $("pct").className="sub"+(t>=st.goal?" done":"");
+    $("bar").style.strokeDashoffset=C*(1-Math.min(1,t/st.goal));
+    $("goal").value=st.goal;
+    var l=$("list");l.innerHTML="";
+    if(!st.entries.length){l.innerHTML='<li class="empty">Пока ничего не записано</li>';}
+    st.entries.slice().reverse().forEach(function(e){
+      var li=document.createElement("li");
+      var a=document.createElement("span");a.textContent=e.time;
+      var b=document.createElement("span");b.textContent="+"+e.ml+" мл";
+      li.appendChild(a);li.appendChild(b);l.appendChild(li);
+    });
+  }
+  function add(ml){
+    ml=Math.round(Number(ml));
+    if(!ml||ml<1||ml>3000)return;
+    var d=new Date();
+    var time=("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+    st.entries.push({ml:ml,time:time});save();render();
+  }
+  document.querySelectorAll(".add").forEach(function(b){
+    b.addEventListener("click",function(){add(b.dataset.ml)});
+  });
+  $("addc").addEventListener("click",function(){add($("custom").value);$("custom").value="";});
+  $("undo").addEventListener("click",function(){st.entries.pop();save();render();});
+  $("reset").addEventListener("click",function(){
+    if(st.entries.length&&!confirm("Сбросить записи за сегодня?"))return;
+    st.entries=[];save();render();
+  });
+  $("goal").addEventListener("change",function(){
+    var g=Math.round(Number(this.value));
+    if(g>=500&&g<=6000){st.goal=g;save();}
+    render();
+  });
+  $("date").textContent=new Date().toLocaleDateString("ru-RU",{weekday:"long",day:"numeric",month:"long"});
+  render();
+})();
+</script>
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
+</script>
+</body>
+</html>
